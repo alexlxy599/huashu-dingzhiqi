@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn 招聘消息生成器</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #c0392b, #8e1010);
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    header h1 { font-size: 1.15rem; font-weight: 600; }
+
+    /* ── 话术配置栏 ── */
+    .config-bar {
+      background: white;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 0 32px;
+    }
+    .config-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: #555;
+      width: fit-content;
+    }
+    .config-toggle:hover { color: #c0392b; }
+    .config-toggle .arrow { transition: transform 0.2s; font-size: 0.7rem; }
+    .config-toggle.open .arrow { transform: rotate(90deg); }
+
+    .config-body {
+      display: none;
+      padding-bottom: 18px;
+    }
+    .config-body.open { display: block; }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1.2fr;
+      gap: 16px;
+      margin-top: 4px;
+    }
+    .config-field label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+    .config-field input,
+    .config-field textarea {
+      width: 100%;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+      color: #333;
+      resize: none;
+    }
+    .config-field input:focus,
+    .config-field textarea:focus { border-color: #c0392b; }
+
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .chip {
+      font-size: 0.76rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1.5px solid #e0e0e0;
+      background: white;
+      cursor: pointer;
+      color: #555;
+      transition: all 0.15s;
+    }
+    .chip:hover { border-color: #c0392b; color: #c0392b; }
+    .chip.active { background: #c0392b; border-color: #c0392b; color: white; }
+
+    /* ── Main layout ── */
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-header h2 { font-size: 0.95rem; font-weight: 600; color: #333; }
+    .badge {
+      font-size: 0.75rem;
+      background: #f0f2f5;
+      color: #666;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+
+    .panel-body { padding: 16px 20px; }
+
+    textarea.input-area {
+      width: 100%;
+      height: 220px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.85rem;
+      font-family: "SF Mono", monospace;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      color: #333;
+      line-height: 1.6;
+    }
+    textarea.input-area:focus { border-color: #c0392b; }
+
+    .hint {
+      font-size: 0.78rem;
+      color: #999;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    .parsed-list {
+      margin-top: 14px;
+      border: 1px solid #f0f0f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .parsed-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      border-bottom: 1px solid #f8f8f8;
+      font-size: 0.84rem;
+    }
+    .parsed-item:last-child { border-bottom: none; }
+    .parsed-item input[type=checkbox] { accent-color: #c0392b; }
+    .parsed-name { font-weight: 500; color: #222; min-width: 120px; }
+    .parsed-url {
+      color: #0073b1;
+      font-size: 0.78rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .status-dot {
+      margin-left: auto;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ddd;
+      flex-shrink: 0;
+    }
+    .status-dot.searching { background: #f39c12; animation: pulse 1s infinite; }
+    .status-dot.generating { background: #3498db; animation: pulse 0.6s infinite; }
+    .status-dot.done { background: #27ae60; animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #c0392b, #8e1010);
+      color: white;
+      flex: 1;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: #f0f2f5; color: #555; }
+    .btn-secondary:hover { background: #e4e6ea; }
+
+    /* Results */
+    .results-list { display: flex; flex-direction: column; gap: 14px; }
+
+    .result-card {
+      border: 1.5px solid #f0f0f0;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: box-shadow 0.2s;
+    }
+    .result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+
+    .result-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #fafafa;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .result-name { font-weight: 600; font-size: 0.9rem; color: #222; }
+    .result-url { font-size: 0.75rem; color: #0073b1; }
+
+    .result-card-body { padding: 12px 14px; }
+
+    .message-text {
+      font-size: 0.85rem;
+      line-height: 1.7;
+      color: #333;
+      white-space: pre-wrap;
+      border: 1px solid #f0f0f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #fefefe;
+      min-height: 80px;
+      outline: none;
+    }
+    .message-text:focus { border-color: #c0392b; }
+
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      justify-content: flex-end;
+    }
+    .btn-copy {
+      background: #0073b1;
+      color: white;
+      font-size: 0.8rem;
+      padding: 6px 16px;
+    }
+    .btn-copy:hover { background: #005f96; }
+    .btn-copy.copied { background: #27ae60; }
+    .btn-regen {
+      background: #f0f2f5;
+      color: #555;
+      font-size: 0.8rem;
+      padding: 6px 14px;
+    }
+    .btn-export {
+      background: #1a7a4a;
+      color: white;
+      font-size: 0.8rem;
+      padding: 5px 14px;
+      border-radius: 6px;
+    }
+    .btn-export:hover { background: #15633c; }
+    .btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #bbb;
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.9rem; }
+
+    .progress-bar-wrap {
+      height: 3px;
+      background: #f0f0f0;
+      border-radius: 2px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #c0392b, #e74c3c);
+      border-radius: 2px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .api-key-banner {
+      background: #fff8f8;
+      border: 1px solid #f5c6c6;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.83rem;
+      color: #c0392b;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .api-key-input {
+      flex: 1;
+      border: 1.5px solid #f5c6c6;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.84rem;
+      outline: none;
+      font-family: monospace;
+      background: white;
+    }
+    .api-key-input:focus { border-color: #c0392b; }
+
+    /* 模型配置区 */
+    .model-config {
+      background: #f8f9ff;
+      border: 1px solid #e0e4f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+    .model-config-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 10px;
+    }
+    .provider-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .provider-tab {
+      padding: 5px 14px;
+      border-radius: 6px;
+      border: 1.5px solid #e0e0e0;
+      background: white;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: #555;
+      transition: all 0.15s;
+    }
+    .provider-tab:hover { border-color: #c0392b; color: #c0392b; }
+    .provider-tab.active { background: #c0392b; border-color: #c0392b; color: white; font-weight: 500; }
+    .model-fields { display: flex; gap: 10px; }
+    .model-fields input {
+      flex: 1;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 0.84rem;
+      font-family: monospace;
+      outline: none;
+    }
+    .model-fields input:focus { border-color: #c0392b; }
+    .field-hint { font-size: 0.74rem; color: #aaa; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🔗</span>
+  <h1>LinkedIn 招聘消息生成器 — 华为人才生态团队</h1>
+</header>
+
+<!-- ── 话术配置栏 ── -->
+<div class="config-bar">
+  <div class="config-toggle" id="config-toggle" onclick="toggleConfig()">
+    <span>▶</span><span class="arrow">▶</span> 话术配置
+    <span style="font-size:0.78rem;color:#aaa;font-weight:400;margin-left:4px;" id="config-summary"></span>
+  </div>
+
+  <div class="config-body" id="config-body">
+    <div class="config-grid">
+
+      <div class="config-field">
+        <label>目标社区</label>
+        <input id="cfg-community" type="text" placeholder="如：DeepSpeed、PyTorch、OpenJDK…" oninput="updateSummary()" />
+        <div class="preset-chips" id="community-chips">
+          <span class="chip active" onclick="setChip('community', 'DeepSpeed', this)">DeepSpeed</span>
+          <span class="chip" onclick="setChip('community', 'PyTorch', this)">PyTorch</span>
+          <span class="chip" onclick="setChip('community', 'OpenJDK', this)">OpenJDK</span>
+          <span class="chip" onclick="setChip('community', 'LLVM', this)">LLVM</span>
+          <span class="chip" onclick="setChip('community', 'vLLM', this)">vLLM</span>
+          <span class="chip" onclick="setChip('community', 'TVM', this)">TVM</span>
+          <span class="chip" onclick="setChip('community', 'Linux Kernel', this)">Linux Kernel</span>
+        </div>
+      </div>
+
+      <div class="config-field">
+        <label>重点技术方向</label>
+        <textarea id="cfg-focus" rows="3" placeholder="如：模型量化、分布式训练、边缘侧推理、算子优化…" oninput="updateSummary()"></textarea>
+      </div>
+
+      <div class="config-field">
+        <label>额外话术要求</label>
+        <textarea id="cfg-note" rows="3" placeholder="如：强调华为昇腾生态、提及具体实验室名称…" oninput="updateSummary()"></textarea>
+      </div>
+
+      <!-- 模型配置 -->
+      <div class="config-field">
+        <label>模型配置</label>
+        <div class="provider-tabs">
+          <span class="provider-tab active" onclick="setProvider('anthropic', this)">Claude</span>
+          <span class="provider-tab" onclick="setProvider('openai', this)">GLM / 兼容接口</span>
+        </div>
+        <div class="model-fields">
+          <div style="flex:1">
+            <input id="cfg-model" type="text" placeholder="模型名，如 glm-4-flash" />
+            <div class="field-hint" id="model-hint">默认：claude-opus-4-6</div>
+          </div>
+        </div>
+        <div id="base-url-wrap" style="margin-top:8px;display:none;">
+          <input id="cfg-base-url" type="text" style="width:100%" placeholder="API 地址，如 http://localhost:8000/v1" />
+          <div class="field-hint">本地部署填入本地地址；智谱云留空</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── 主体 ── -->
+<div class="container">
+
+  <!-- 左：输入 -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>人员名单</h2>
+      <span class="badge" id="count-badge">0 人</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="api-key-banner">
+        🔑
+        <input class="api-key-input" id="api-key" type="password" placeholder="Anthropic API Key（sk-ant-...）" />
+      </div>
+
+      <textarea class="input-area" id="input-area" placeholder="粘贴名单，每行一条，格式：
+姓名    LinkedIn链接
+
+例如：
+Guokai Ma    https://www.linkedin.com/in/guokai-ma-7b8aa08/
+Conglong Li    https://www.linkedin.com/in/conglongli/
+Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
+
+      <p class="hint">支持 Tab、多个空格或逗号分隔姓名与链接。Google 搜索链接也可以。</p>
+
+      <div id="parsed-list" class="parsed-list" style="display:none;"></div>
+
+      <div class="progress-bar-wrap" id="progress-wrap" style="display:none;">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-secondary" onclick="parseInput()">解析名单</button>
+        <button class="btn-primary" id="gen-btn" onclick="generateAll()" disabled>✨ 生成消息</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：结果 -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>生成结果</h2>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="badge" id="result-badge">0 条</span>
+        <button class="btn-export" id="export-btn" onclick="exportExcel()" disabled>⬇ 导出 Excel</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="results-list" class="results-list">
+        <div class="empty-state">
+          <div class="icon">💬</div>
+          <p>配置话术、粘贴名单，<br>点击生成后消息将逐条显示在这里</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let parsedPeople = [];
+  let resultCount  = 0;
+  let exportData   = [];  // 收集所有生成结果用于导出
+
+  // ── 话术配置 ──
+  function toggleConfig() {
+    const body    = document.getElementById('config-body');
+    const toggle  = document.getElementById('config-toggle');
+    const isOpen  = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    toggle.classList.toggle('open', !isOpen);
+  }
+
+  function setChip(field, value, el) {
+    document.getElementById(`cfg-${field}`).value = value;
+    el.closest('.preset-chips').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    updateSummary();
+  }
+
+  function updateSummary() {
+    const community = document.getElementById('cfg-community').value.trim();
+    const focus     = document.getElementById('cfg-focus').value.trim();
+    const parts = [];
+    if (community) parts.push(community);
+    if (focus)     parts.push(focus.slice(0, 30) + (focus.length > 30 ? '…' : ''));
+    document.getElementById('config-summary').textContent =
+      parts.length ? `（${parts.join(' · ')}）` : '';
+  }
+
+  let currentProvider = 'anthropic';
+
+  function setProvider(provider, el) {
+    currentProvider = provider;
+    document.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    const isGLM = provider === 'openai';
+    document.getElementById('base-url-wrap').style.display = isGLM ? 'block' : 'none';
+    document.getElementById('cfg-model').placeholder = isGLM ? '模型名，如 glm-4-flash' : '模型名，如 claude-opus-4-6';
+    document.getElementById('model-hint').textContent  = isGLM ? '默认：glm-4' : '默认：claude-opus-4-6';
+  }
+
+  function getConfig() {
+    return {
+      community:   document.getElementById('cfg-community').value.trim(),
+      focus_areas: document.getElementById('cfg-focus').value.trim(),
+      custom_note: document.getElementById('cfg-note').value.trim(),
+      provider:    currentProvider,
+      model_name:  document.getElementById('cfg-model').value.trim(),
+      base_url:    document.getElementById('cfg-base-url')?.value.trim() || '',
+    };
+  }
+
+  // ── 解析名单 ──
+  document.getElementById('input-area').addEventListener('input', () => parseInput(true));
+
+  function parseInput(silent = false) {
+    const raw   = document.getElementById('input-area').value.trim();
+    const lines = raw.split('\n').filter(l => l.trim());
+
+    parsedPeople = [];
+    for (const line of lines) {
+      const parts = line.trim().split(/\t|  +|,/).map(p => p.trim()).filter(Boolean);
+      if (!parts.length) continue;
+      let name = '', url = '';
+      for (const part of parts) {
+        if (part.startsWith('http')) url = part;
+        else if (!name) name = part;
+      }
+      if (name) parsedPeople.push({ name, url });
+    }
+
+    document.getElementById('count-badge').textContent = `${parsedPeople.length} 人`;
+
+    const listEl = document.getElementById('parsed-list');
+    if (!parsedPeople.length) {
+      listEl.style.display = 'none';
+      document.getElementById('gen-btn').disabled = true;
+      return;
+    }
+
+    listEl.style.display = 'block';
+    listEl.innerHTML = parsedPeople.map((p, i) => `
+      <div class="parsed-item" id="item-${i}">
+        <input type="checkbox" checked data-index="${i}" />
+        <span class="parsed-name">${esc(p.name)}</span>
+        <span class="parsed-url">${p.url ? esc(p.url) : '<em style="color:#ccc">无链接</em>'}</span>
+        <div class="status-dot" id="dot-${i}"></div>
+      </div>
+    `).join('');
+
+    document.getElementById('gen-btn').disabled = false;
+  }
+
+  // ── 生成 ──
+  async function generateAll() {
+    const apiKey = document.getElementById('api-key').value.trim();
+    if (!apiKey) { alert('请先输入 Anthropic API Key'); return; }
+
+    const checkboxes = document.querySelectorAll('.parsed-list input[type=checkbox]:checked');
+    const selected   = Array.from(checkboxes).map(cb => parsedPeople[cb.dataset.index]);
+    if (!selected.length) { alert('请选择至少一个人'); return; }
+
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '生成中…';
+    document.getElementById('results-list').innerHTML = '';
+    resultCount = 0;
+    exportData  = [];
+    document.getElementById('result-badge').textContent = '0 条';
+    document.getElementById('export-btn').disabled = true;
+
+    const progWrap = document.getElementById('progress-wrap');
+    const progBar  = document.getElementById('progress-bar');
+    progWrap.style.display = 'block';
+    progBar.style.width = '0%';
+
+    let done = 0;
+    const config = getConfig();
+
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      body: JSON.stringify({ people: selected, config })
+    });
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = JSON.parse(line.slice(6));
+
+        if      (data.status === 'searching')  setDot(data.name, 'searching');
+        else if (data.status === 'generating') setDot(data.name, 'generating');
+        else if (data.status === 'done') {
+          setDot(data.name, 'done');
+          done++;
+          progBar.style.width = `${(done / selected.length) * 100}%`;
+          addResultCard(data, config);
+          exportData.push({ name: data.name, url: data.url, message: data.message, community: config.community || '' });
+          document.getElementById('export-btn').disabled = false;
+        } else if (data.status === 'complete') {
+          document.getElementById('gen-btn').disabled = false;
+          document.getElementById('gen-btn').textContent = '✨ 生成消息';
+        }
+      }
+    }
+  }
+
+  function setDot(name, status) {
+    document.querySelectorAll('.parsed-item').forEach(item => {
+      if (item.querySelector('.parsed-name')?.textContent === name)
+        item.querySelector('.status-dot').className = `status-dot ${status}`;
+    });
+  }
+
+  function addResultCard(data, config) {
+    resultCount++;
+    document.getElementById('result-badge').textContent = `${resultCount} 条`;
+
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+      <div class="result-card-header">
+        <div>
+          <div class="result-name">${esc(data.name)}</div>
+          ${data.url ? `<div class="result-url">${esc(data.url)}</div>` : ''}
+        </div>
+        ${config.community ? `<span style="font-size:0.75rem;color:#999">${esc(config.community)}</span>` : ''}
+      </div>
+      <div class="result-card-body">
+        <div class="message-text" contenteditable="true" id="msg-${resultCount}">${esc(data.message)}</div>
+        <div class="card-actions">
+          <button class="btn-secondary btn-regen"
+            onclick="regenCard(${resultCount}, '${esc(data.name)}', '${esc(data.url)}')">↺ 重新生成</button>
+          <button class="btn-copy" id="copy-${resultCount}" onclick="copyMsg(${resultCount})">复制</button>
+        </div>
+      </div>`;
+    document.getElementById('results-list').appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function copyMsg(id) {
+    const text = document.getElementById(`msg-${id}`).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById(`copy-${id}`);
+      btn.textContent = '已复制 ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  async function regenCard(id, name, url) {
+    const apiKey = document.getElementById('api-key').value.trim();
+    if (!apiKey) { alert('请先输入 API Key'); return; }
+
+    const msgEl = document.getElementById(`msg-${id}`);
+    msgEl.textContent = '重新生成中…';
+
+    const config = getConfig();
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      body: JSON.stringify({ people: [{ name, url }], config })
+    });
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = JSON.parse(line.slice(6));
+        if (data.status === 'done') msgEl.textContent = data.message;
+      }
+    }
+  }
+
+  function exportExcel() {
+    if (!exportData.length) return;
+
+    // 读取页面上最新编辑内容（用户可能手动改过）
+    const rows = exportData.map((d, i) => {
+      const msgEl = document.getElementById(`msg-${i + 1}`);
+      return {
+        '姓名':       d.name,
+        'LinkedIn':   d.url,
+        '目标社区':   d.community,
+        '消息内容':   msgEl ? msgEl.innerText : d.message,
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // 列宽
+    ws['!cols'] = [
+      { wch: 18 },   // 姓名
+      { wch: 50 },   // LinkedIn
+      { wch: 14 },   // 目标社区
+      { wch: 80 },   // 消息内容
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '招聘消息');
+
+    const now = new Date();
+    const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    XLSX.writeFile(wb, `华为招聘消息_${ts}.xlsx`);
+  }
+
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // 默认展开配置栏
+  toggleConfig();
+  updateSummary();
+</script>
+</body>
+</html>
