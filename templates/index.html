@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LinkedIn 招聘消息生成器</title>
+  <title>LinkedIn 消息生成器</title>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,6 +25,51 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
     header h1 { font-size: 1.15rem; font-weight: 600; }
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+    .header-btn {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .header-btn:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── 模式切换 ── */
+    .mode-bar {
+      background: white;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 10px 32px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #888;
+      margin-right: 4px;
+    }
+    .mode-tab {
+      padding: 6px 18px;
+      border-radius: 20px;
+      border: 1.5px solid #e0e0e0;
+      background: white;
+      font-size: 0.84rem;
+      cursor: pointer;
+      color: #555;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .mode-tab:hover { border-color: #c0392b; color: #c0392b; }
+    .mode-tab.active { background: #c0392b; border-color: #c0392b; color: white; }
 
     /* ── 话术配置栏 ── */
     .config-bar {
@@ -48,10 +93,7 @@
     .config-toggle .arrow { transition: transform 0.2s; font-size: 0.7rem; }
     .config-toggle.open .arrow { transform: rotate(90deg); }
 
-    .config-body {
-      display: none;
-      padding-bottom: 18px;
-    }
+    .config-body { display: none; padding-bottom: 18px; }
     .config-body.open { display: block; }
 
     .config-grid {
@@ -103,6 +145,75 @@
     }
     .chip:hover { border-color: #c0392b; color: #c0392b; }
     .chip.active { background: #c0392b; border-color: #c0392b; color: white; }
+
+    /* ── 发件人配置 ── */
+    .sender-section {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .sender-section-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 10px;
+    }
+    .sender-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+    .sender-grid input {
+      width: 100%;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+      color: #333;
+    }
+    .sender-grid input:focus { border-color: #c0392b; }
+    .sender-saved {
+      font-size: 0.76rem;
+      color: #27ae60;
+      margin-top: 6px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .sender-saved.show { opacity: 1; }
+
+    /* ── 语言切换 ── */
+    .lang-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .lang-row-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .lang-tab {
+      padding: 5px 14px;
+      border-radius: 6px;
+      border: 1.5px solid #e0e0e0;
+      background: white;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: #555;
+      transition: all 0.15s;
+    }
+    .lang-tab:hover { border-color: #c0392b; color: #c0392b; }
+    .lang-tab.active { background: #c0392b; border-color: #c0392b; color: white; font-weight: 500; }
 
     /* ── Main layout ── */
     .container {
@@ -187,6 +298,14 @@
       text-overflow: ellipsis;
       max-width: 200px;
     }
+    .parsed-detail {
+      font-size: 0.76rem;
+      color: #888;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .status-dot {
       margin-left: auto;
       width: 8px;
@@ -198,6 +317,7 @@
     .status-dot.searching { background: #f39c12; animation: pulse 1s infinite; }
     .status-dot.generating { background: #3498db; animation: pulse 0.6s infinite; }
     .status-dot.done { background: #27ae60; animation: none; }
+    .status-dot.error { background: #e74c3c; animation: none; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -250,6 +370,8 @@
     }
     .result-name { font-weight: 600; font-size: 0.9rem; color: #222; }
     .result-url { font-size: 0.75rem; color: #0073b1; }
+    .result-paper { font-size: 0.75rem; color: #666; font-style: italic; margin-top: 2px; }
+    .result-affiliation { font-size: 0.72rem; color: #999; }
 
     .result-card-body { padding: 12px 14px; }
 
@@ -345,22 +467,6 @@
     .api-key-input:focus { border-color: #c0392b; }
 
     /* 模型配置区 */
-    .model-config {
-      background: #f8f9ff;
-      border: 1px solid #e0e4f0;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-top: 2px;
-      margin-bottom: 2px;
-    }
-    .model-config-title {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 10px;
-    }
     .provider-tabs {
       display: flex;
       gap: 6px;
@@ -390,14 +496,174 @@
     }
     .model-fields input:focus { border-color: #c0392b; }
     .field-hint { font-size: 0.74rem; color: #aaa; margin-top: 5px; }
+
+    /* ── 历史记录侧栏 ── */
+    .history-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+    .history-overlay.open { display: block; }
+
+    .history-panel {
+      position: fixed;
+      top: 0;
+      right: -480px;
+      width: 480px;
+      height: 100vh;
+      background: white;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+      z-index: 101;
+      transition: right 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .history-panel.open { right: 0; }
+
+    .history-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .history-header h2 { font-size: 1rem; font-weight: 600; }
+    .history-close {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      color: #999;
+      padding: 4px 8px;
+    }
+    .history-close:hover { color: #333; }
+
+    .history-toolbar {
+      padding: 12px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      gap: 8px;
+    }
+    .history-search {
+      flex: 1;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .history-search:focus { border-color: #c0392b; }
+    .btn-clear-history {
+      background: #fee;
+      color: #c0392b;
+      font-size: 0.8rem;
+      padding: 6px 12px;
+      border: 1px solid #f5c6c6;
+    }
+    .btn-clear-history:hover { background: #fdd; }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 20px;
+    }
+
+    .history-card {
+      border: 1.5px solid #f0f0f0;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: box-shadow 0.2s;
+    }
+    .history-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+    .history-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #fafafa;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .history-card-name { font-weight: 600; font-size: 0.85rem; color: #222; }
+    .history-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .history-card-time { font-size: 0.72rem; color: #aaa; }
+    .history-card-lang {
+      font-size: 0.68rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: #eef;
+      color: #669;
+    }
+    .history-card-delete {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 6px;
+    }
+    .history-card-delete:hover { color: #c0392b; }
+
+    .history-card-body { padding: 10px 12px; }
+    .history-card-message {
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: #444;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow: hidden;
+    }
+    .history-card-message.expanded { max-height: none; }
+    .history-card-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      justify-content: flex-end;
+    }
+    .btn-history-copy {
+      background: #0073b1;
+      color: white;
+      font-size: 0.76rem;
+      padding: 4px 12px;
+    }
+    .btn-history-expand {
+      background: #f0f2f5;
+      color: #555;
+      font-size: 0.76rem;
+      padding: 4px 12px;
+    }
+
+    .history-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: #ccc;
+    }
+    .history-empty .icon { font-size: 2rem; margin-bottom: 8px; }
   </style>
 </head>
 <body>
 
 <header>
   <span>🔗</span>
-  <h1>LinkedIn 招聘消息生成器 — 华为人才生态团队</h1>
+  <h1>LinkedIn 消息生成器</h1>
+  <div class="header-right">
+    <button class="header-btn" onclick="toggleHistory()">📋 历史记录</button>
+  </div>
 </header>
+
+<!-- ── 模式切换 ── -->
+<div class="mode-bar">
+  <span class="mode-label">模式：</span>
+  <span class="mode-tab active" onclick="setMode('community', this)">开源社区</span>
+  <span class="mode-tab" onclick="setMode('academic', this)">学术会议</span>
+</div>
 
 <!-- ── 话术配置栏 ── -->
 <div class="config-bar">
@@ -409,7 +675,8 @@
   <div class="config-body" id="config-body">
     <div class="config-grid">
 
-      <div class="config-field">
+      <!-- 开源社区：目标社区 -->
+      <div class="config-field" id="cfg-community-field">
         <label>目标社区</label>
         <input id="cfg-community" type="text" placeholder="如：DeepSpeed、PyTorch、OpenJDK…" oninput="updateSummary()" />
         <div class="preset-chips" id="community-chips">
@@ -423,6 +690,22 @@
         </div>
       </div>
 
+      <!-- 学术会议：目标会议 -->
+      <div class="config-field" id="cfg-conference-field" style="display:none;">
+        <label>目标会议</label>
+        <input id="cfg-conference" type="text" placeholder="如：ICML 2025、NeurIPS 2025…" oninput="updateSummary()" />
+        <div class="preset-chips" id="conference-chips">
+          <span class="chip" onclick="setChip('conference', 'ICML 2025', this)">ICML</span>
+          <span class="chip" onclick="setChip('conference', 'NeurIPS 2025', this)">NeurIPS</span>
+          <span class="chip" onclick="setChip('conference', 'CVPR 2025', this)">CVPR</span>
+          <span class="chip" onclick="setChip('conference', 'ICLR 2025', this)">ICLR</span>
+          <span class="chip" onclick="setChip('conference', 'ACL 2025', this)">ACL</span>
+          <span class="chip" onclick="setChip('conference', 'EMNLP 2025', this)">EMNLP</span>
+          <span class="chip" onclick="setChip('conference', 'AAAI 2025', this)">AAAI</span>
+          <span class="chip" onclick="setChip('conference', 'KDD 2025', this)">KDD</span>
+        </div>
+      </div>
+
       <div class="config-field">
         <label>重点技术方向</label>
         <textarea id="cfg-focus" rows="3" placeholder="如：模型量化、分布式训练、边缘侧推理、算子优化…" oninput="updateSummary()"></textarea>
@@ -430,28 +713,51 @@
 
       <div class="config-field">
         <label>额外话术要求</label>
-        <textarea id="cfg-note" rows="3" placeholder="如：强调华为昇腾生态、提及具体实验室名称…" oninput="updateSummary()"></textarea>
+        <textarea id="cfg-note" rows="3" placeholder="如：强调昇腾生态、提及具体实验室名称…" oninput="updateSummary()"></textarea>
       </div>
 
       <!-- 模型配置 -->
       <div class="config-field">
         <label>模型配置</label>
         <div class="provider-tabs">
-          <span class="provider-tab active" onclick="setProvider('anthropic', this)">Claude</span>
-          <span class="provider-tab" onclick="setProvider('openai', this)">GLM / 兼容接口</span>
+          <span class="provider-tab active" onclick="setProvider('anthropic', this)">Claude (Anthropic)</span>
+          <span class="provider-tab" onclick="setProvider('openai', this)">OpenAI 兼容接口</span>
         </div>
         <div class="model-fields">
           <div style="flex:1">
-            <input id="cfg-model" type="text" placeholder="模型名，如 glm-4-flash" />
+            <input id="cfg-model" type="text" placeholder="模型名，如 claude-opus-4-6" />
             <div class="field-hint" id="model-hint">默认：claude-opus-4-6</div>
           </div>
         </div>
-        <div id="base-url-wrap" style="margin-top:8px;display:none;">
-          <input id="cfg-base-url" type="text" style="width:100%" placeholder="API 地址，如 http://localhost:8000/v1" />
-          <div class="field-hint">本地部署填入本地地址；智谱云留空</div>
+        <div id="api-presets-wrap" style="margin-top:8px;display:none;">
+          <div style="display:flex;gap:6px;margin-bottom:6px;">
+            <span class="chip" onclick="setApiPreset('openrouter', this)">OpenRouter</span>
+            <span class="chip" onclick="setApiPreset('glm', this)">智谱 GLM</span>
+            <span class="chip" onclick="setApiPreset('local', this)">本地部署</span>
+          </div>
+          <input id="cfg-base-url" type="text" style="width:100%" placeholder="API 地址，如 https://openrouter.ai/api/v1" />
+          <div class="field-hint" id="base-url-hint">填写 API 地址；Anthropic 直连无需填写</div>
         </div>
       </div>
 
+    </div>
+
+    <!-- 发件人配置 -->
+    <div class="sender-section">
+      <div class="sender-section-title">发件人信息（自动保存）</div>
+      <div class="sender-grid">
+        <div><input id="sender-name" type="text" placeholder="姓名，如 Alex Liu" oninput="debounceSaveSender()" /></div>
+        <div><input id="sender-team" type="text" placeholder="团队，如 华为人才生态团队" oninput="debounceSaveSender()" /></div>
+        <div><input id="sender-contact" type="text" placeholder="联系方式，如 微信：alexlxy599" oninput="debounceSaveSender()" /></div>
+      </div>
+      <div class="sender-saved" id="sender-saved">已保存</div>
+    </div>
+
+    <!-- 语言切换 -->
+    <div class="lang-row">
+      <span class="lang-row-label">消息语言：</span>
+      <span class="lang-tab active" onclick="setLanguage('zh', this)">中文</span>
+      <span class="lang-tab" onclick="setLanguage('en', this)">English</span>
     </div>
   </div>
 </div>
@@ -462,25 +768,25 @@
   <!-- 左：输入 -->
   <div class="panel">
     <div class="panel-header">
-      <h2>人员名单</h2>
+      <h2 id="input-panel-title">人员名单</h2>
       <span class="badge" id="count-badge">0 人</span>
     </div>
     <div class="panel-body">
 
       <div class="api-key-banner">
         🔑
-        <input class="api-key-input" id="api-key" type="password" placeholder="Anthropic API Key（sk-ant-...）" />
+        <input class="api-key-input" id="api-key" type="password" placeholder="API Key" />
       </div>
 
       <textarea class="input-area" id="input-area" placeholder="粘贴名单，每行一条，格式：
-姓名    LinkedIn链接
+姓名    GitHub用户名    LinkedIn链接
 
 例如：
-Guokai Ma    https://www.linkedin.com/in/guokai-ma-7b8aa08/
-Conglong Li    https://www.linkedin.com/in/conglongli/
+Conglong Li    conglongli    https://www.linkedin.com/in/conglongli/
+Guokai Ma    guokaima
 Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
 
-      <p class="hint">支持 Tab、多个空格或逗号分隔姓名与链接。Google 搜索链接也可以。</p>
+      <p class="hint" id="input-hint">支持 Tab 或多个空格分隔。三列都可选：姓名 + GitHub用户名 + LinkedIn链接，有什么填什么。</p>
 
       <div id="parsed-list" class="parsed-list" style="display:none;"></div>
 
@@ -489,8 +795,8 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
       </div>
 
       <div class="actions">
-        <button class="btn-secondary" onclick="parseInput()">解析名单</button>
-        <button class="btn-primary" id="gen-btn" onclick="generateAll()" disabled>✨ 生成消息</button>
+        <button class="btn-primary" id="parse-btn" onclick="handleParse()" style="flex:none;padding:10px 24px;">解析名单</button>
+        <button class="btn-primary" id="gen-btn" onclick="handleGenerate()" disabled>✨ 生成消息</button>
       </div>
     </div>
   </div>
@@ -506,7 +812,7 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
     </div>
     <div class="panel-body">
       <div id="results-list" class="results-list">
-        <div class="empty-state">
+        <div class="empty-state" id="empty-state">
           <div class="icon">💬</div>
           <p>配置话术、粘贴名单，<br>点击生成后消息将逐条显示在这里</p>
         </div>
@@ -516,16 +822,77 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
 
 </div>
 
+<!-- ── 历史记录侧栏 ── -->
+<div class="history-overlay" id="history-overlay" onclick="toggleHistory()"></div>
+<div class="history-panel" id="history-panel">
+  <div class="history-header">
+    <h2>📋 历史记录</h2>
+    <button class="history-close" onclick="toggleHistory()">✕</button>
+  </div>
+  <div class="history-toolbar">
+    <input class="history-search" id="history-search" type="text" placeholder="搜索姓名或内容…" oninput="debounceLoadHistory()" />
+    <button class="btn-clear-history" onclick="clearAllHistory()">清空全部</button>
+  </div>
+  <div class="history-list" id="history-list">
+    <div class="history-empty">
+      <div class="icon">📭</div>
+      <p>暂无历史记录</p>
+    </div>
+  </div>
+</div>
+
 <script>
-  let parsedPeople = [];
-  let resultCount  = 0;
-  let exportData   = [];  // 收集所有生成结果用于导出
+  let parsedPeople   = [];
+  let parsedPapers   = [];   // academic mode: [{title, abstract, venue, year, authors:[{name, affiliation}]}]
+  let resultCount    = 0;
+  let exportData     = [];
+  let currentLanguage = 'zh';
+  let currentMode     = 'community';
+  let currentProvider = 'anthropic';
+
+  // ── 模式切换 ──
+  function setMode(mode, el) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    const isAcademic = mode === 'academic';
+
+    // 配置栏切换
+    document.getElementById('cfg-community-field').style.display  = isAcademic ? 'none' : '';
+    document.getElementById('cfg-conference-field').style.display  = isAcademic ? '' : 'none';
+
+    // 输入区切换
+    document.getElementById('input-panel-title').textContent = isAcademic ? '论文标题' : '人员名单';
+    document.getElementById('input-area').placeholder = isAcademic
+      ? '每行一个论文标题，例如：\n\nFlashAttention: Fast and Memory-Efficient Exact Attention\nLoRA: Low-Rank Adaptation of Large Language Models\nDeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model'
+      : '粘贴名单，每行一条，格式：\n姓名    LinkedIn链接\n\n例如：\nGuokai Ma    https://www.linkedin.com/in/guokai-ma-7b8aa08/\nConglong Li    https://www.linkedin.com/in/conglongli/';
+    document.getElementById('input-hint').textContent = isAcademic
+      ? '每行一个论文标题，将通过 Semantic Scholar 自动查找作者和摘要。'
+      : '支持 Tab、多个空格或逗号分隔姓名与链接。';
+    document.getElementById('parse-btn').textContent = isAcademic ? '查询论文' : '解析名单';
+    document.getElementById('gen-btn').textContent = '✨ 生成消息';
+    document.getElementById('empty-state').querySelector('p').innerHTML = isAcademic
+      ? '粘贴论文标题、查询作者，<br>点击生成后消息将逐条显示在这里'
+      : '配置话术、粘贴名单，<br>点击生成后消息将逐条显示在这里';
+
+    // 清空已有解析
+    document.getElementById('input-area').value = '';
+    document.getElementById('parsed-list').style.display = 'none';
+    document.getElementById('parsed-list').innerHTML = '';
+    document.getElementById('count-badge').textContent = '0 人';
+    document.getElementById('gen-btn').disabled = true;
+    parsedPeople = [];
+    parsedPapers = [];
+
+    updateSummary();
+  }
 
   // ── 话术配置 ──
   function toggleConfig() {
-    const body    = document.getElementById('config-body');
-    const toggle  = document.getElementById('config-toggle');
-    const isOpen  = body.classList.contains('open');
+    const body   = document.getElementById('config-body');
+    const toggle = document.getElementById('config-toggle');
+    const isOpen = body.classList.contains('open');
     body.classList.toggle('open', !isOpen);
     toggle.classList.toggle('open', !isOpen);
   }
@@ -538,40 +905,121 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
   }
 
   function updateSummary() {
-    const community = document.getElementById('cfg-community').value.trim();
-    const focus     = document.getElementById('cfg-focus').value.trim();
     const parts = [];
-    if (community) parts.push(community);
-    if (focus)     parts.push(focus.slice(0, 30) + (focus.length > 30 ? '…' : ''));
+    if (currentMode === 'academic') {
+      const conf = document.getElementById('cfg-conference').value.trim();
+      if (conf) parts.push(conf);
+    } else {
+      const comm = document.getElementById('cfg-community').value.trim();
+      if (comm) parts.push(comm);
+    }
+    const focus = document.getElementById('cfg-focus').value.trim();
+    if (focus) parts.push(focus.slice(0, 30) + (focus.length > 30 ? '…' : ''));
     document.getElementById('config-summary').textContent =
       parts.length ? `（${parts.join(' · ')}）` : '';
   }
-
-  let currentProvider = 'anthropic';
 
   function setProvider(provider, el) {
     currentProvider = provider;
     document.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    const isGLM = provider === 'openai';
-    document.getElementById('base-url-wrap').style.display = isGLM ? 'block' : 'none';
-    document.getElementById('cfg-model').placeholder = isGLM ? '模型名，如 glm-4-flash' : '模型名，如 claude-opus-4-6';
-    document.getElementById('model-hint').textContent  = isGLM ? '默认：glm-4' : '默认：claude-opus-4-6';
+    const isCompat = provider === 'openai';
+    document.getElementById('api-presets-wrap').style.display = isCompat ? 'block' : 'none';
+    document.getElementById('cfg-model').placeholder = isCompat ? '模型名，如 anthropic/claude-sonnet-4' : '模型名，如 claude-opus-4-6';
+    document.getElementById('model-hint').textContent = isCompat ? '默认：glm-4' : '默认：claude-opus-4-6';
+  }
+
+  function setApiPreset(preset, el) {
+    el.closest('div').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    const modelEl   = document.getElementById('cfg-model');
+    const baseUrlEl = document.getElementById('cfg-base-url');
+    const hintEl    = document.getElementById('base-url-hint');
+    if (preset === 'openrouter') {
+      baseUrlEl.value = 'https://openrouter.ai/api/v1';
+      modelEl.placeholder = '如 anthropic/claude-sonnet-4';
+      hintEl.textContent = 'OpenRouter：支持数百种模型，用 OpenRouter API Key';
+    } else if (preset === 'glm') {
+      baseUrlEl.value = 'https://open.bigmodel.cn/api/paas/v4';
+      modelEl.placeholder = '如 glm-4-flash';
+      hintEl.textContent = '智谱云：用智谱 API Key';
+    } else {
+      baseUrlEl.value = 'http://localhost:8000/v1';
+      modelEl.placeholder = '本地模型名';
+      hintEl.textContent = '本地部署：填入你的本地服务地址';
+    }
+  }
+
+  // ── 语言切换 ──
+  function setLanguage(lang, el) {
+    currentLanguage = lang;
+    document.querySelectorAll('.lang-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  // ── 发件人配置 ──
+  let senderTimer = null;
+  function debounceSaveSender() {
+    clearTimeout(senderTimer);
+    senderTimer = setTimeout(saveSender, 800);
+  }
+
+  async function saveSender() {
+    const data = {
+      name:    document.getElementById('sender-name').value.trim(),
+      team:    document.getElementById('sender-team').value.trim(),
+      contact: document.getElementById('sender-contact').value.trim(),
+    };
+    await fetch('/api/sender', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const el = document.getElementById('sender-saved');
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2000);
+  }
+
+  async function loadSender() {
+    const resp = await fetch('/api/sender');
+    const data = await resp.json();
+    if (data.name)    document.getElementById('sender-name').value = data.name;
+    if (data.team)    document.getElementById('sender-team').value = data.team;
+    if (data.contact) document.getElementById('sender-contact').value = data.contact;
   }
 
   function getConfig() {
     return {
+      mode:        currentMode,
       community:   document.getElementById('cfg-community').value.trim(),
+      conference:  document.getElementById('cfg-conference').value.trim(),
       focus_areas: document.getElementById('cfg-focus').value.trim(),
       custom_note: document.getElementById('cfg-note').value.trim(),
       provider:    currentProvider,
       model_name:  document.getElementById('cfg-model').value.trim(),
       base_url:    document.getElementById('cfg-base-url')?.value.trim() || '',
+      language:    currentLanguage,
     };
   }
 
-  // ── 解析名单 ──
-  document.getElementById('input-area').addEventListener('input', () => parseInput(true));
+  // ── 统一入口 ──
+  function handleParse() {
+    if (currentMode === 'academic') lookupPapers();
+    else parseInput();
+  }
+
+  function handleGenerate() {
+    if (currentMode === 'academic') generateAcademic();
+    else generateAll();
+  }
+
+  // ══════════════════════════════════════
+  //  开源社区模式
+  // ══════════════════════════════════════
+
+  document.getElementById('input-area').addEventListener('input', () => {
+    if (currentMode === 'community') parseInput(true);
+  });
 
   function parseInput(silent = false) {
     const raw   = document.getElementById('input-area').value.trim();
@@ -579,14 +1027,15 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
 
     parsedPeople = [];
     for (const line of lines) {
-      const parts = line.trim().split(/\t|  +|,/).map(p => p.trim()).filter(Boolean);
+      const parts = line.trim().split(/\t|  +/).map(p => p.trim()).filter(Boolean);
       if (!parts.length) continue;
-      let name = '', url = '';
+      let name = '', url = '', github = '';
       for (const part of parts) {
         if (part.startsWith('http')) url = part;
         else if (!name) name = part;
+        else if (!github) github = part;
       }
-      if (name) parsedPeople.push({ name, url });
+      if (name) parsedPeople.push({ name, url, github });
     }
 
     document.getElementById('count-badge').textContent = `${parsedPeople.length} 人`;
@@ -603,6 +1052,7 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
       <div class="parsed-item" id="item-${i}">
         <input type="checkbox" checked data-index="${i}" />
         <span class="parsed-name">${esc(p.name)}</span>
+        ${p.github ? `<span class="parsed-detail" style="color:#333;">@${esc(p.github)}</span>` : ''}
         <span class="parsed-url">${p.url ? esc(p.url) : '<em style="color:#ccc">无链接</em>'}</span>
         <div class="status-dot" id="dot-${i}"></div>
       </div>
@@ -611,10 +1061,9 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
     document.getElementById('gen-btn').disabled = false;
   }
 
-  // ── 生成 ──
   async function generateAll() {
     const apiKey = document.getElementById('api-key').value.trim();
-    if (!apiKey) { alert('请先输入 Anthropic API Key'); return; }
+    if (!apiKey) { alert('请先输入 API Key'); return; }
 
     const checkboxes = document.querySelectorAll('.parsed-list input[type=checkbox]:checked');
     const selected   = Array.from(checkboxes).map(cb => parsedPeople[cb.dataset.index]);
@@ -686,6 +1135,7 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
     resultCount++;
     document.getElementById('result-badge').textContent = `${resultCount} 条`;
 
+    const tag = config.community || config.conference || '';
     const card = document.createElement('div');
     card.className = 'result-card';
     card.innerHTML = `
@@ -693,14 +1143,14 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
         <div>
           <div class="result-name">${esc(data.name)}</div>
           ${data.url ? `<div class="result-url">${esc(data.url)}</div>` : ''}
+          ${data.paper ? `<div class="result-paper">${esc(data.paper)}</div>` : ''}
+          ${data.affiliation ? `<div class="result-affiliation">${esc(data.affiliation)}</div>` : ''}
         </div>
-        ${config.community ? `<span style="font-size:0.75rem;color:#999">${esc(config.community)}</span>` : ''}
+        ${tag ? `<span style="font-size:0.75rem;color:#999">${esc(tag)}</span>` : ''}
       </div>
       <div class="result-card-body">
         <div class="message-text" contenteditable="true" id="msg-${resultCount}">${esc(data.message)}</div>
         <div class="card-actions">
-          <button class="btn-secondary btn-regen"
-            onclick="regenCard(${resultCount}, '${esc(data.name)}', '${esc(data.url)}')">↺ 重新生成</button>
           <button class="btn-copy" id="copy-${resultCount}" onclick="copyMsg(${resultCount})">复制</button>
         </div>
       </div>`;
@@ -718,67 +1168,287 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
     });
   }
 
-  async function regenCard(id, name, url) {
+  // ══════════════════════════════════════
+  //  学术会议模式
+  // ══════════════════════════════════════
+
+  async function lookupPapers() {
+    const raw   = document.getElementById('input-area').value.trim();
+    const titles = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!titles.length) { alert('请输入至少一个论文标题'); return; }
+
+    const parseBtn = document.getElementById('parse-btn');
+    parseBtn.disabled = true;
+    parseBtn.textContent = '查询中…';
+
+    const listEl = document.getElementById('parsed-list');
+    listEl.style.display = 'block';
+    listEl.innerHTML = '';
+
+    parsedPapers = [];
+    let totalAuthors = 0;
+
+    for (const title of titles) {
+      // Show searching status
+      const searchItem = document.createElement('div');
+      searchItem.className = 'parsed-item';
+      searchItem.innerHTML = `<span class="parsed-detail" style="color:#f39c12">🔍 查询中：${esc(title.slice(0, 60))}…</span>`;
+      listEl.appendChild(searchItem);
+
+      try {
+        const resp = await fetch('/api/lookup-paper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+
+        listEl.removeChild(searchItem);
+
+        if (!resp.ok) {
+          const errItem = document.createElement('div');
+          errItem.className = 'parsed-item';
+          errItem.innerHTML = `<span class="parsed-detail" style="color:#e74c3c">✕ 未找到：${esc(title.slice(0, 60))}</span>`;
+          listEl.appendChild(errItem);
+          continue;
+        }
+
+        const paper = await resp.json();
+        parsedPapers.push(paper);
+
+        // Show paper + authors
+        const paperHeader = document.createElement('div');
+        paperHeader.className = 'parsed-item';
+        paperHeader.style.background = '#f8f9fa';
+        paperHeader.style.borderLeft = '3px solid #c0392b';
+        paperHeader.innerHTML = `
+          <input type="checkbox" checked data-paper-idx="${parsedPapers.length - 1}" class="paper-checkbox" />
+          <span class="parsed-name" style="min-width:auto;font-size:0.82rem;">${esc(paper.title.slice(0, 70))}${paper.title.length > 70 ? '…' : ''}</span>
+          <span class="parsed-detail">${esc(paper.venue || '')} ${paper.year || ''} · ${paper.authors.length} 位作者</span>
+        `;
+        listEl.appendChild(paperHeader);
+
+        for (const author of paper.authors) {
+          totalAuthors++;
+          const authorItem = document.createElement('div');
+          authorItem.className = 'parsed-item';
+          authorItem.style.paddingLeft = '38px';
+          authorItem.innerHTML = `
+            <span class="parsed-name" style="min-width:100px;font-size:0.82rem;">${esc(author.name)}</span>
+            <span class="parsed-detail">${author.affiliation ? esc(author.affiliation) : '<em style="color:#ccc">机构未知</em>'}</span>
+          `;
+          listEl.appendChild(authorItem);
+        }
+
+      } catch (e) {
+        listEl.removeChild(searchItem);
+        const errItem = document.createElement('div');
+        errItem.className = 'parsed-item';
+        errItem.innerHTML = `<span class="parsed-detail" style="color:#e74c3c">✕ 查询失败：${esc(title.slice(0, 50))}</span>`;
+        listEl.appendChild(errItem);
+      }
+    }
+
+    document.getElementById('count-badge').textContent = `${totalAuthors} 人 / ${parsedPapers.length} 篇`;
+    parseBtn.disabled = false;
+    parseBtn.textContent = '查询论文';
+    document.getElementById('gen-btn').disabled = parsedPapers.length === 0;
+  }
+
+  async function generateAcademic() {
     const apiKey = document.getElementById('api-key').value.trim();
     if (!apiKey) { alert('请先输入 API Key'); return; }
 
-    const msgEl = document.getElementById(`msg-${id}`);
-    msgEl.textContent = '重新生成中…';
+    // Collect checked papers
+    const checkboxes = document.querySelectorAll('.paper-checkbox:checked');
+    const selectedPapers = Array.from(checkboxes).map(cb => parsedPapers[cb.dataset.paperIdx]);
+    if (!selectedPapers.length) { alert('请至少选择一篇论文'); return; }
 
+    // Count total authors
+    let totalAuthors = 0;
+    selectedPapers.forEach(p => totalAuthors += p.authors.length);
+
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '生成中…';
+    document.getElementById('results-list').innerHTML = '';
+    resultCount = 0;
+    exportData  = [];
+    document.getElementById('result-badge').textContent = '0 条';
+    document.getElementById('export-btn').disabled = true;
+
+    const progWrap = document.getElementById('progress-wrap');
+    const progBar  = document.getElementById('progress-bar');
+    progWrap.style.display = 'block';
+    progBar.style.width = '0%';
+
+    let done = 0;
     const config = getConfig();
-    const resp = await fetch('/api/generate', {
+
+    const resp = await fetch('/api/generate-academic', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
-      body: JSON.stringify({ people: [{ name, url }], config })
+      body: JSON.stringify({ papers: selectedPapers, config }),
     });
 
     const reader  = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+
     while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop();
+
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const data = JSON.parse(line.slice(6));
-        if (data.status === 'done') msgEl.textContent = data.message;
+
+        if (data.status === 'generating') {
+          // nothing special for now
+        } else if (data.status === 'done') {
+          done++;
+          progBar.style.width = `${(done / totalAuthors) * 100}%`;
+          addResultCard(data, config);
+          exportData.push({
+            name: data.name,
+            paper: data.paper || '',
+            affiliation: data.affiliation || '',
+            message: data.message,
+            conference: config.conference || '',
+          });
+          document.getElementById('export-btn').disabled = false;
+        } else if (data.status === 'complete') {
+          document.getElementById('gen-btn').disabled = false;
+          document.getElementById('gen-btn').textContent = '✨ 生成消息';
+        }
       }
     }
   }
 
+  // ── Excel 导出 ──
   function exportExcel() {
     if (!exportData.length) return;
 
-    // 读取页面上最新编辑内容（用户可能手动改过）
+    const isAcademic = currentMode === 'academic';
     const rows = exportData.map((d, i) => {
       const msgEl = document.getElementById(`msg-${i + 1}`);
-      return {
-        '姓名':       d.name,
-        'LinkedIn':   d.url,
-        '目标社区':   d.community,
-        '消息内容':   msgEl ? msgEl.innerText : d.message,
-      };
+      if (isAcademic) {
+        return {
+          '姓名':     d.name,
+          '机构':     d.affiliation || '',
+          '论文':     d.paper || '',
+          '会议':     d.conference || '',
+          '消息内容': msgEl ? msgEl.innerText : d.message,
+        };
+      } else {
+        return {
+          '姓名':     d.name,
+          'LinkedIn': d.url || '',
+          '目标社区': d.community || '',
+          '消息内容': msgEl ? msgEl.innerText : d.message,
+        };
+      }
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
-
-    // 列宽
-    ws['!cols'] = [
-      { wch: 18 },   // 姓名
-      { wch: 50 },   // LinkedIn
-      { wch: 14 },   // 目标社区
-      { wch: 80 },   // 消息内容
-    ];
+    ws['!cols'] = isAcademic
+      ? [{ wch: 18 }, { wch: 30 }, { wch: 50 }, { wch: 14 }, { wch: 80 }]
+      : [{ wch: 18 }, { wch: 50 }, { wch: 14 }, { wch: 80 }];
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '招聘消息');
+    XLSX.utils.book_append_sheet(wb, ws, isAcademic ? '学术合作消息' : '招聘消息');
 
     const now = new Date();
     const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-    XLSX.writeFile(wb, `华为招聘消息_${ts}.xlsx`);
+    const prefix = isAcademic ? '学术合作消息' : '招聘消息';
+    XLSX.writeFile(wb, `${prefix}_${ts}.xlsx`);
+  }
+
+  // ── 历史记录 ──
+  function toggleHistory() {
+    const overlay = document.getElementById('history-overlay');
+    const panel   = document.getElementById('history-panel');
+    const isOpen  = panel.classList.contains('open');
+    overlay.classList.toggle('open', !isOpen);
+    panel.classList.toggle('open', !isOpen);
+    if (!isOpen) loadHistory();
+  }
+
+  let historyTimer = null;
+  function debounceLoadHistory() {
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(loadHistory, 400);
+  }
+
+  async function loadHistory() {
+    const search = document.getElementById('history-search').value.trim();
+    const resp = await fetch(`/api/history?search=${encodeURIComponent(search)}`);
+    const data = await resp.json();
+
+    const listEl = document.getElementById('history-list');
+    if (!data.length) {
+      listEl.innerHTML = `<div class="history-empty"><div class="icon">📭</div><p>${search ? '没有匹配的记录' : '暂无历史记录'}</p></div>`;
+      return;
+    }
+
+    listEl.innerHTML = data.map(item => `
+      <div class="history-card" id="hcard-${item.id}">
+        <div class="history-card-header">
+          <div>
+            <span class="history-card-name">${esc(item.name)}</span>
+            <span class="history-card-lang">${item.language === 'en' ? 'EN' : '中'}</span>
+          </div>
+          <div class="history-card-meta">
+            ${item.community ? `<span style="font-size:0.72rem;color:#999">${esc(item.community)}</span>` : ''}
+            <span class="history-card-time">${formatTime(item.created_at)}</span>
+            <button class="history-card-delete" onclick="deleteHistoryItem(${item.id})">✕</button>
+          </div>
+        </div>
+        <div class="history-card-body">
+          <div class="history-card-message" id="hmsg-${item.id}">${esc(item.message)}</div>
+          <div class="history-card-actions">
+            <button class="btn-history-expand" onclick="toggleExpand(${item.id})">展开</button>
+            <button class="btn-history-copy" onclick="copyHistoryMsg(${item.id})">复制</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function toggleExpand(id) {
+    const el = document.getElementById(`hmsg-${id}`);
+    el.classList.toggle('expanded');
+  }
+
+  function copyHistoryMsg(id) {
+    const text = document.getElementById(`hmsg-${id}`).innerText;
+    navigator.clipboard.writeText(text);
+  }
+
+  async function deleteHistoryItem(id) {
+    await fetch(`/api/history/${id}`, { method: 'DELETE' });
+    const card = document.getElementById(`hcard-${id}`);
+    if (card) card.remove();
+  }
+
+  async function clearAllHistory() {
+    if (!confirm('确定要清空所有历史记录吗？')) return;
+    await fetch('/api/history/clear', { method: 'POST' });
+    loadHistory();
+  }
+
+  function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts + 'Z');
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000)       return '刚刚';
+    if (diff < 3600000)     return `${Math.floor(diff / 60000)} 分钟前`;
+    if (diff < 86400000)    return `${Math.floor(diff / 3600000)} 小时前`;
+    if (diff < 604800000)   return `${Math.floor(diff / 86400000)} 天前`;
+    return `${d.getMonth()+1}/${d.getDate()}`;
   }
 
   function esc(str) {
@@ -787,9 +1457,10 @@ Heyang Qin    https://www.linkedin.com/in/heyangqin/"></textarea>
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // 默认展开配置栏
+  // ── 初始化 ──
   toggleConfig();
   updateSummary();
+  loadSender();
 </script>
 </body>
 </html>
